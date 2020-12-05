@@ -5,18 +5,22 @@
 #include <cstring>
 #include <mutex>
 
-#define MINBLOCKSIZE 4
-#define LARGEBLOCK 256
-#define BINSIZE 128
-
-inline size_t getBlockSize(size_t sz) {
-  if(sz <= 0) {
-    return (MINBLOCKSIZE+sizeof(size_t));
-  }
-  return (sz+sizeof(size_t));
-}
+#define ALIGN 8
+#define ALIGN_MASK (ALIGN - 1)
+#define MIN_BLOCK_SIZE ALIGN
+#define LARGE_BLOCK 256
+#define BIN_SIZE 128
+#define MIN_OVERHEAD  (sizeof(size_t))
 
 typedef size_t bin_t;
+
+inline size_t alignBlock(size_t sz) {
+  return (sz + ALIGN_MASK) & ~ALIGN_MASK;
+}
+
+inline size_t getBlockSize(size_t sz) {
+  return (sz > 0) ? (sz + MIN_OVERHEAD) : (MIN_BLOCK_SIZE + MIN_OVERHEAD);
+}
 
 class mallocHeap {
 public:
@@ -131,12 +135,13 @@ template<typename Super, typename FList, bin_t binNum>
 class SegHeapList: public Super {
 public:
   void *malloc(size_t sz) {
-    
+
   }
 private:
   FList segList[binNum];
 };
 
-typedef LockedHeap<FreeListHeap<HeaderHeap<mallocHeap>>> Heap;
+typedef
+LockedHeap<FreeListHeap<HeaderHeap<mallocHeap>>> Heap;
 
 #endif
