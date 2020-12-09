@@ -4,27 +4,16 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <iostream>
 
-#define ALIGN 8
-#define ALIGN_MASK (ALIGN - 1)
-#define MIN_BLOCK_SIZE ALIGN
-#define LARGE_BLOCK 256
-#define BIN_SIZE 128
-#define MIN_OVERHEAD  (sizeof(size_t))
-
-typedef size_t bin_t;
-
-inline size_t alignBlock(size_t sz) {
-  return (sz + ALIGN_MASK) & ~ALIGN_MASK;
-}
-
-inline size_t getBlockSize(size_t sz) {
-  return (sz > 0) ? (sz + MIN_OVERHEAD) : (MIN_BLOCK_SIZE + MIN_OVERHEAD);
-}
+struct freeObject {
+  struct freeObject *next;
+};
 
 class mallocHeap {
 public:
   void *malloc(size_t sz) {
+    // std::cout << sz << "\n";
     auto ptr = std::malloc(sz);
     if (!ptr)
       return nullptr;
@@ -40,11 +29,11 @@ template<typename Super>
 class HeaderHeap : public Super {
 public:
   void *malloc(size_t sz) {
-    size_t *ptr = (size_t *)Super::malloc(getBlockSize(sz));
+    auto *ptr = Super::malloc(sz + sizeof(size_t));
     if (!ptr)
       return nullptr;
-    *ptr = sz;
-    return (void *)(ptr + 1);
+    *(size_t *)ptr = sz;
+    return (void *)((size_t *)ptr + 1);
   }
 
   void free(void *ptr) {
@@ -58,7 +47,7 @@ public:
   }
 };
 
-template<typename Super, size_t minSize=24, size_t maxSize=32>
+template<typename Super, size_t max_small_size=256>
 class FreeListHeap : public Super {
 public:
   FreeListHeap() {
@@ -73,14 +62,15 @@ public:
     freeList = nullptr;
   }
   void *malloc(size_t sz) {
-    if (sz < minSize || sz > maxSize) {
-      void *ret = Super::malloc(sz);
-      if (!ret)
+    void *ptr = nullptr;
+    if (sz >= max_small_size) {
+      ptr = Super::malloc(sz);
+      if (!ptr)
         return nullptr;
-      return ret;
+      return ptr;
     }
-    void *ptr = freeList;
 
+    ptr = freeList;
     if (!ptr) {
       ptr = Super::malloc(sz);
       if (!ptr)
@@ -93,7 +83,7 @@ public:
 
   void free(void *ptr) {
     size_t sz = Super::getSize(ptr);
-    if (sz < minSize || sz > maxSize) {
+    if (sz >= max_small_size) {
       Super::free(ptr);
     } else {
       freeObject *next = freeList;
@@ -102,10 +92,6 @@ public:
     }
   }
 private:
-  class freeObject {
-  public:
-    freeObject *next;
-  };
   freeObject *freeList;
 };
 
@@ -130,18 +116,5 @@ public:
 private:
   std::mutex mtx;
 };
-
-template<typename Super, typename FList, bin_t binNum>
-class SegHeapList: public Super {
-public:
-  void *malloc(size_t sz) {
-
-  }
-private:
-  FList segList[binNum];
-};
-
-typedef
-LockedHeap<FreeListHeap<HeaderHeap<mallocHeap>>> Heap;
 
 #endif
